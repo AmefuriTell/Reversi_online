@@ -1,0 +1,12 @@
+#include "pcbnet2.as"
+
+set_address
+
+stop
+#deffunc set_address
+    address_txt = ""
+    notesel address_txt
+    noteload "address"
+    noteget port, 1
+    port = int(port)
+return
