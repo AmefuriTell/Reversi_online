@@ -1,8 +1,96 @@
 #include "pcbnet2.as"
 
-set_address
+onexit *exit
 
-stop
+#define MAX_CLIENTS 100
+
+//初期化
+init
+
+//ソケット作成
+repeat
+    tcpmake listenID, port
+    if(stat != 0){
+        dialog "ソケット作成に失敗しました。\nもう一度作成しますか？", 2
+        if(stat == 6) : continue
+        end
+    }
+    break
+loop
+
+//メイン
+repeat
+    tcpwait listenID
+    if(stat != 0) : gosub *accept
+
+    repeat MAX_CLIENTS
+        n = cnt
+        sockID = sockIDs(n)
+        if(sockID = 0) : continue
+        repeat
+            tcpget command, 1024, sockID
+            if(stat == 0) : break
+            gosub *run_command
+        loop
+
+        tcpfail sockID
+        if(stat != 0) : gosub *disconnect
+    loop
+    gosub *printstat
+    wait 1
+loop
+*exit
+    tcpclose listenID
+end
+
+*accept
+    tcpaccept sockID, listenID
+    t = 0
+    repeat MAX_CLIENTS
+        if(sockIDs(cnt) == 0){
+            t = 1
+            sockIDs(cnt) = sockID
+            tcpinfo client_info(cnt), sockID
+            break
+        }
+    loop
+
+    if(t == 0){//満タンなら閉じる
+        tcpclose sockID
+    }
+return
+
+*run_command
+    dialog "" + n + "番から[" + command + "]が送られてきました"
+return
+
+*disconnect
+    tcpclose sockID
+    sockIDs(n) = 0
+return
+
+*printstat
+    redraw 0
+        color 255,255, 255 : boxf
+        color 51, 51, 51 : pos 0, 0
+        repeat MAX_CLIENTS
+            if(sockIDs(cnt) == 0){
+                mes "" + cnt + " : <waiting>"
+            }else{
+                mes "" + cnt + " : now connecting(" + client_info(cnt) + ")"
+            }
+        loop
+    redraw 1
+return
+
+#deffunc init
+    set_address
+
+    dim sockIDs, MAX_CLIENTS
+    sdim client_info, 1024, MAX_CLIENTS
+    sdim command, 1024
+return
+
 #deffunc set_address
     address_txt = ""
     notesel address_txt

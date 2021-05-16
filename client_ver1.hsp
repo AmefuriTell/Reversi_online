@@ -1,8 +1,54 @@
 #include "pcbnet2.as"
 
+onexit *exit
+
+command = ""
 set_address
 
+//ソケット作成
+repeat
+    tcpopen sockID, address, port
+    if(stat != 0){
+        dialog "ソケット作成に失敗しました。\nもう一度作成しますか？", 2
+        if(stat == 6) : continue
+        end
+    }
+    break
+loop
+
+//接続確認
+repeat
+    tcpiscon sockID
+    if(stat == 1){
+        mes "接続しました"
+        input command, ginfo_winx, 20
+        button gosub "送る", *send_command
+        break
+    }else:if(stat > 1){
+        tcpclose sockID : dialog "接続に失敗しました", 1 : goto *exit
+    }
+    wait 1
+loop
+
+//接続し続けているかの確認
+repeat
+    tcpfail sockID
+    if(stat != 0){
+        tcpclose sockID : dialog "接続が切断されました", 1 : goto *exit
+    }
+    wait 1
+loop
 stop
+
+*send_command
+    tcpput command, sockID
+return
+stop
+
+*exit
+    tcpclose sockID
+end
+
 #deffunc set_address
     address_txt = ""
     notesel address_txt
