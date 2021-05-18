@@ -1,8 +1,10 @@
 #include "pcbnet2.as"
+randomize
 
 onexit *exit
 screen 0,,,, 0, 0
-#define MAX_CLIENTS 4
+gsel 0, 2
+#define MAX_CLIENTS 100
 
 //初期化
 init
@@ -32,9 +34,16 @@ repeat
             if(stat == 0) : break
             gosub *run_command
         loop
+        timer(n)--;
+        if(timer(n) == 0){
+            message = latest_message(n)
+            title "もう一度送ります\n" + message + " " + n
+            gosub *re_send_message
+        }
 
         tcpfail sockID
         if(stat != 0) : gosub *disconnect
+        wait 1
     loop
     gosub *printstat
     wait 1
@@ -61,44 +70,111 @@ end
 return
 
 *run_command//メッセージを受け取ったらコマンドを実行する
-    //dialog "" + n + "番から[" + command + "]が送られてきました"
-    if(command == "GetUserID"){
-        tcpput "" + n, sockID
-    }else:if(command == "JoinMatch"){
-        breakf = 0
-        repeat MAX_CLIENTS
-            i = cnt
-            if(i == n) : continue
-            if(match_stat(i) == 1){
-                match_graph(i) = n
-                match_graph(n) = i
-                
-                match_stat(i) = 2
+    title "" + n + "番から[" + command + "]が送られてきました"
+
+    switch command
+        case "OK"
+            timer(n) = 0
+        swbreak
+        case "JoinMatch"
+            break_f = 0
+            repeat MAX_CLIENTS
+                i = cnt
+                if(i == n) : continue
+                if(match_stat(i) == 1){
+                    break_f = 1
+                    break
+                }
+            loop
+            if(break_f == 1){//相手が見つかったら
+                tcpput "MakedMatch", sockIDs(n)
+                tcpput "MakedMatch", sockIDs(i)
+
+                timer(n) = 10
+                timer(i) = 10
+
+                latest_message(n) = "MakedMatch"
+                latest_message(i) = "MakedMatch"
+
                 match_stat(n) = 2
+                match_stat(i) = 2
 
-                tcpput "-1", sockIDs(i)
-                tcpput "1", sockIDs(n)
+                match_graph(n) = i
+                match_graph(i) = n
+            }else{//見つからなかったら
+                tcpput "MakingMatch", sockIDs(n)
 
-                breakf = 1
+                timer(n) = 10
 
-                break
+                latest_message(n) = "MakingMatch"
+
+                match_stat(n) = 1
             }
-        loop
-        if(breakf == 0){
-            tcpput "NowSerchOtherPlayer", sockID
-            match_stat(n) = 1
-        }
-    }
+        swbreak
+        case "JoinOK"
+            timer(n) = 0
+            JoinOK_flag(n) = 1
+            if(n != match_graph(n) && JoinOK_flag(match_graph(n)) == 1){
+                JoinOK_flag(n) = 2
+                JoinOK_flag(match_graph(n)) = 2
+
+                if(rnd(2) == 0){
+                    tcpput "First", sockIDs(n)
+                    tcpput "Second", sockIDs(match_graph(n))
+
+                    latest_message(n) = "First"
+                    latest_message(match_graph(n)) = "Second"
+                }else{
+                    tcpput "Second", sockIDs(n)
+                    tcpput "First", sockIDs(match_graph(n))
+
+                    latest_message(n) = "Second"
+                    latest_message(match_graph(n)) = "First"
+                }
+
+                timer(n) = 10
+                timer(match_graph(n)) = 10
+            }
+        swbreak
+
+        case "FinishGame"
+            JoinOK_flag(n) = 0
+            JoinOK_flag(match_graph(n)) = 0
+
+            match_stat(n) = 0
+            match_stat(match_graph(n)) = 0
+
+            match_graph(match_graph(n)) = 0
+            match_graph(n) = 0
+        swbreak
+
+        default
+            if(sockIDs(match_graph(n)) != 0) : tcpput command, sockIDs(match_graph(n))
+
+            latest_message(match_graph(n)) = command
+            timer(match_graph(n)) = 10
+        swbreak
+    swend
+
+return
+
+*re_send_message
+    wait 1
+    tcpput latest_message(n) ,sockIDs(n)
 return
 
 *disconnect
     tcpclose sockID
 
-    if(match_stat(match_graph(n)) == 2) : tcpput "NonPlayer", sockIds(match_graph(n))
+    if(match_stat(match_graph(n)) == 2 || match_stat(match_graph(n)) == 3) : tcpput "NonPlayer", sockIds(match_graph(n))
     sockIDs(n) = 0
     //match_graph(match_graph(n)) = 0
     match_graph(n) = 0
     match_stat(n) = 0
+
+    timer(n) = 0
+    latest_message(n) = ""
+    Latest_command(n) = ""
 return
 
 *printstat
@@ -107,9 +183,9 @@ return
         color 51, 51, 51 : pos 0, 0
         repeat MAX_CLIENTS
             if(sockIDs(cnt) == 0){
-                mes "" + cnt + " : <waiting>"
+                mes "" + cnt + " : <waiting> " + latest_message(cnt) + " " + match_stat(cnt)
             }else{
-                mes "" + cnt + " : now connecting"
+                mes "" + cnt + " : now connecting " + latest_message(cnt) + " " + match_stat(cnt)
             }
         loop
     redraw 1
@@ -123,6 +199,12 @@ return
     dim match_stat, MAX_CLIENTS//マッチを探しているか、どうか。ゲーム中か。
     dim match_graph, MAX_CLIENTS
     sdim command, 1024
+
+    sdim Latest_command, 1024, MAX_CLIENTS
+    sdim latest_message, 1024, MAX_CLIENTS
+    dim timer, MAX_CLIENTS
+
+    dim JoinOK_flag, MAX_CLIENTS
 return
 
 #deffunc set_address
