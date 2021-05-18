@@ -15,7 +15,7 @@
 
 screen 0, 400, 300 : title "オンラインオセロ"
 color 0, 0, 0 : boxf : color 255, 255, 255 : pos 20, 20 : mes ">>データサーバーへのアクセスを開始"
-sockopen 0, "www.google.co.jp", 80
+sockopen 0, "github.com", 80
 if(stat == 0){
     mes ">>接続に成功\n>>アップデートを確認"
     sockclose 0
