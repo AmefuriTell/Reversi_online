@@ -3,7 +3,7 @@ randomize
 
 onexit *exit
 screen 0,,,, 0, 0
-gsel 0, 2
+//gsel 0, 2
 #define MAX_CLIENTS 100
 
 //‰Šú‰»

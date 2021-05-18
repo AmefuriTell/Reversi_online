@@ -2,7 +2,7 @@
 celload "image.png", 1 : celdiv 1, 100
 
 screen 0,,,, ginfo_dispx / 2
-gsel 0, 2
+//gsel 0, 2
 onexit *exit
 
 command = ""
@@ -165,6 +165,10 @@ return
                 celput 1, grid(x, y), 1.0, 1.0
                 //pos x * 100 + 10, y * 100 + 10
                 //mes can_grid(x, y)
+                if(myturn != turn && grid(x, y) == 3){
+                    pos x * 100, y * 100
+                    celput 1, 0, 1.0, 1.0
+                }
             loop
         loop
     redraw 1
@@ -306,13 +310,13 @@ return
                 break
             }else{
                 print_field
-                if(turn == myturn) : dialog "あなたのターンです"
+                if(turn == myturn) : //dialog "あなたのターンです"
                 put
                 turn = turn \ 2 + 1
             }
         }else{
             print_field
-            if(turn == myturn) : dialog "あなたのターンです"
+            if(turn == myturn) : //dialog "あなたのターンです"
             put
             turn = turn \ 2 + 1
         }
