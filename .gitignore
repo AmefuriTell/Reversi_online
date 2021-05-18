@@ -1,3 +1,7 @@
 *.ax
 address
 /aws_RDP/
+packfile
+hsptmp
+obj
+hsptmp
