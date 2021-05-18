@@ -1,0 +1,104 @@
+/*
+    アルゴリズム
+    
+    00. インターネット接続を確認。
+    01. サーバーからupdata.datをダウンロードしてくる。
+    02. ローカルにあるupdata.datとサーバーから持ってきたupdata.datの一行目が違ったら、それ以降のデータをダウンロードする。
+    03. ドライブ内にダウンロードしたデータ分の空きがあるかどうか確認する。
+    04. ファイルを上書きする。
+*/
+#packopt name "オンラインオセロアップデーター"
+//#packopt icon "オンラインオセロ.ico"
+//00
+#include "hspsock.as"
+#include "hspinet.as"
+
+screen 0, 400, 300 : title "オンラインオセロ"
+color 0, 0, 0 : boxf : color 255, 255, 255 : pos 20, 20 : mes ">>データサーバーへのアクセスを開始"
+sockopen 0, "www.google.co.jp", 80
+if(stat == 0){
+    mes ">>接続に成功\n>>アップデートを確認"
+    sockclose 0
+
+    netinit
+
+    notesel local_updata
+    noteload "updata.dat"
+    noteget local_updata_updataURL, 1
+    noteget local_updata_request, 2
+    neturl local_updata_updataURL
+    netrequest_get local_updata_request
+
+    repeat
+        netexec res
+        if(res > 0){
+            
+            netgetv downloaded_updata
+
+            notesel local_updata
+            noteget local_updata_date, 0
+
+            
+            notesel downloaded_updata
+            noteget downloaded_updata_date, 0
+            download_updata_filenum = (notemax - 4) / 3
+
+            sdim downloaded_file,,download_updata_filenum
+            
+            if(local_updata_date != downloaded_updata_date){
+                mes ">>アップデートダウンロード開始"
+                repeat download_updata_filenum
+                    notesel downloaded_updata
+                    noteget download_updata_URL, cnt * 3 + 4
+                    noteget download_updata_request, cnt * 3 + 5
+                    noteget download_updata_filename, cnt * 3 + 6
+
+                    mes ">>" + download_updata_filename + "をダウンロード中"
+                    neturl download_updata_URL
+                    netrequest_get download_updata_request
+                    repeat
+                        netexec res
+                        if(res > 0){
+                            sdim buf, netgetv_size()
+                            netgetv_data buf
+                            bsave download_updata_filename, buf, netgetv_requestsize()
+                            sdim buf
+                            break
+                        }
+                        if(res < 0){
+                            neterror estr
+                            dialog "ERROR : " + estr + "\nデータの取得に失敗しました。\nオンラインオセロを起動します。", 1, "ダウンロードエラー"
+                            goto *EXIT
+                        }
+                        await 5
+                    loop
+                loop
+                local_updata = downloaded_updata
+                notesel local_updata
+                notesave "updata.dat"
+                mes ">>アップデートが完了しました"
+            }else{
+                mes ">>最新バージョンです"
+                
+            }
+            
+            goto *EXIT
+        }
+        if(res < 0){
+            neterror estr
+            dialog "ERROR : " + estr + "\nデータの取得に失敗しました。\nオンラインオセロを起動します。", 1, "ダウンロードエラー"
+            goto *EXIT
+        }
+        await 50
+    loop
+}else{
+    dialog "サーバーへのアクセスに失敗しました。\nオンラインオセロを起動します。", 1, "サーバーアクセスエラー"
+    sockclose 0
+    goto *EXIT
+}
+
+*EXIT
+    mes ">>オンラインオセロを起動します"
+    wait 100
+    exec "オンラインオセロ.exe"
+end
