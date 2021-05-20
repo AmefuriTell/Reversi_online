@@ -1,25 +1,26 @@
-#pack "image.png"
-#pack "address"
 #packopt name "オンラインオセロ"
+#epack "address"
+#epack "image.png"
 
 
+#include "user32.as"
 #include "pcbnet2.as"
 celload "image.png", 1 : celdiv 1, 100
 
-screen 0,,,, ginfo_dispx / 2
-//gsel 0, 2
+
+//初期化
+init_client
+
+
+//名前を入力させる
+waiting_place
+//終了処理
 onexit *exit
-
-command = ""
-message = ""
-matching_wait = 0
-set_address
-
-//ソケット作成
+//ソケットの作成
 repeat
     tcpopen sockID, address, port
     if(stat != 0){
-        dialog "ソケット作成に失敗しました。\nもう一度作成しますか？", 2
+        dialog "ソケット作成に失敗した。\nもう一度作成しますか？", 2
         if(stat == 6) : continue
         end
     }
@@ -30,10 +31,9 @@ loop
 repeat
     tcpiscon sockID
     if(stat == 1){
-        mes "接続しました"
-        button gosub "マッチ", *make_match
-
-        //接続したら、UserIDをもらう。
+        //接続したら、名前を送る。
+        command = "SetName " + Name
+        send_command
         break
     }else:if(stat > 1){
         dialog "接続に失敗しました", 1 : goto *exit
@@ -41,10 +41,8 @@ repeat
     wait 1
 loop
 
-
 //メイン関数
 repeat
-    title "" + cnt
     //接続し続けているかの確認
     tcpfail sockID
     if(stat != 0){
@@ -54,94 +52,107 @@ repeat
     //サーバからのメッセージを確認
     tcpget message, 1024, sockID
     if(stat != 0){
-        gosub *receive_message
+        read_message
     }
+
+    if(now_stat == 0 && cnt \ 100 == 0){
+        command = "NowPlayer Get"
+        send_command
+    }
+    if(now_stat == 1) : title "" + opponent_name + "さんと対戦" : game : title "オンラインオセロ"
+    if(now_stat == 2) : waiting_place
+    draw_window
     wait 1
 loop
-stop
-
-*make_match
-    cls
-    command = "JoinMatch"
-    gosub *send_command
-return
-
-*send_command
-    tcpput command, sockID
-return
-
-*receive_message
-    if(myturn == 0){//マッチング
-        switch message
-            case "MakingMatch"
-                if(matching_wait != 1) : mes "対戦相手を探しています"
-                matching_wait = 1
-
-                gosub *return_send_OK
-            swbreak
-            case "MakedMatch"
-                if(matching_wait != 2) : mes "対戦相手が見つかりました"
-                matching_wait = 2
-                wait 1
-
-                command = "JoinOK"
-                gosub *send_command
-            swbreak
-            case "First"
-                myturn = 1
-                mes "あなたは「くろ」です"
-
-                title "あなたは「くろ」です"
-                gosub *return_send_OK
-
-                game
-            swbreak
-            case "Second"
-                myturn = 2
-                mes "あなたは「しろ」です"
-
-                title "あなたは「しろ」です"
-                gosub *return_send_OK
-
-                game
-
-                
-            swbreak
-        swend
-    }else{//ゲーム中
-        in = int(message)
-        inx = in \ 10
-        iny = in / 10
-
-        gosub *return_send_OK
-    }
-
-    if(message == "NonPlayer"){
-        
-        dialog "相手が切断しました\nあなたの勝利です"
-        cls
-        button gosub "マッチ", *make_match
-        myturn = 0
-    }
-return
-
-*return_send_OK
-    wait 1
-    tcpput "OK", sockID
-return
 stop
 
 *exit
     tcpclose sockID
 end
 
-#deffunc set_address
+//初期化
+#deffunc init_client
+    //addressとポート番号を読み取り
     address_txt = ""
     notesel address_txt
     noteload "address"
     noteget address, 0
     noteget port, 1
     port = int(port)
+
+    name = ""
+    opponent_name = ""
+    message = ""
+    now_stat = 0
+
+
+    //ウィンドウを用意
+    screen 0, ginfo_dispx, ginfo_dispy
+    width 800, 450
+    //ウィンドウの大きさを変更可能にする
+    GetWindowLong hwnd, -16
+    SetWindowLong hwnd, -16, stat | $10000 | $40000
+    //ウィンドウを最大化
+    //sendmsg hwnd, $112, $F030
+    //タイトル設定
+    title "オンラインオセロ"
+return
+
+#deffunc read_message
+    message_first = ""
+    message_second = ""
+    message_third = ""
+    size = 0
+    getstr message_first, message, 0, ' '
+    size += strsize
+    getstr message_second, message, size, ' '
+    size += strsize
+    getstr message_third, message, size, ' '
+    
+    switch message_first
+        case "NowPlayer"
+            Player_num = int(message_second)
+        swbreak
+        case "Matched"
+            now_stat = 1
+            opponent_name = message_second
+            myturn = int(message_third)
+        swbreak
+        case "OpponentDisconected"
+            dialog opponent_name + "さんが切断しました\nあなたの勝利です。"
+            now_stat = 2
+        swbreak
+        case "Move"
+            inx = int(message_second) \ 10
+            iny = int(message_second) / 10
+        swbreak
+    swend
+return
+
+#deffunc send_command
+    tcpput "" + command + " ", sockID
+return
+
+#deffunc draw_window
+    redraw 0
+    if(now_stat == 0){
+        color 255, 255, 255 : boxf
+        color 0, 0, 0
+        pos 0, 0
+        mes "現在の接続数は、" + Player_num + "です\nマッチを探しています。"
+    }else:if(now_stat == 1){
+        color 255, 255, 255 : boxf
+        color 0, 0, 0
+        pos 0, 0
+        mes "" + opponent_name + "さんとマッチしました"
+        if(myturn == 1){
+            mes "あなたは「黒」です"
+        }else{
+            mes "あなたは「白」です"
+        }
+        mes "ゲームを開始します"
+    }
+    redraw 1
 return
 
 #deffunc init_riversi
@@ -226,8 +237,10 @@ return
         repeat
             tcpget message, 1024, sockID
             if(stat != 0){
-                gosub *receive_message
+                read_message
             }
+
+            if(now_stat == 2) : break
             stick key
 
             if(key == 256){
@@ -238,8 +251,8 @@ return
                 if(grid(inx, iny) == 3){
 
                     wait 1
-                    command = "" + (iny * 10 + inx)
-                    gosub *send_command
+                    command = "Move " + (iny * 10 + inx)
+                    send_command
                     repeat 8
                         i = cnt
                         repeat can(inx, iny, i)
@@ -273,8 +286,10 @@ return
             //サーバからのメッセージを確認
             tcpget message, 1024, sockID
             if(stat != 0){
-                gosub *receive_message
+                read_message
             }
+
+            if(now_stat == 2) : break
 
             if(0 > inx or inx > 7 or 0 > iny or iny > 7):continue
             if(grid(inx, iny) == 3){
@@ -324,22 +339,44 @@ return
             turn = turn \ 2 + 1
         }
         print_field
+        if(now_stat == 2) : break
         await
     loop
-    print_field
+    if(now_stat != 2){
+        print_field
 
-    if(black == white){
-        dialog "黒:" + black + " 白:" + white + "\n引き分けです。"
-    }else:if(black > white){
-        dialog "黒:" + black + " 白:" + white + "\n黒の勝ちです"
-    }else{
-        dialog "黒:" + black + " 白:" + white + "\n白の勝ちです"
+        if(black == white){
+            dialog "黒:" + black + " 白:" + white + "\n引き分けです。"
+        }else:if(black > white){
+            dialog "黒:" + black + " 白:" + white + "\n黒の勝ちです"
+        }else{
+            dialog "黒:" + black + " 白:" + white + "\n白の勝ちです"
+        }
+        
+        command = "EndGame"
+        send_command
+        now_stat = 2
     }
-    
-    command = "FinishGame"
-    gosub *send_command
-
-    cls
-    button gosub "マッチ", *make_match
     myturn = 0
+return
+
+#deffunc waiting_place
+    cls
+    mes "対戦で使用する名前を入力してください。16文字までです。"
+    objmode 2
+    input name, 272, 30, 16
+    objsize 272, 30
+    button gosub "対戦!", *@forward
+    return_f = 0
+    repeat
+        if(return_f == 1) : break
+        await
+    loop
+return
+*@
+    return_f = 1
+    now_stat = 0
+    if(name == "") : name = "ゲスト"
+    now_stat = 0
+    cls
 return
