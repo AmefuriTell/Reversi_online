@@ -175,13 +175,13 @@ return
             x = cnt
             repeat 8
                 y = cnt
-                pos x * 100, y * 100
-                celput 1, grid(x, y), 1.0, 1.0
+                pos x * 50, y * 50
+                celput 1, grid(x, y), 0.5, 0.5
                 //pos x * 100 + 10, y * 100 + 10
                 //mes can_grid(x, y)
                 if(myturn != turn && grid(x, y) == 3){
-                    pos x * 100, y * 100
-                    celput 1, 0, 1.0, 1.0
+                    pos x * 50, y * 50
+                    celput 1, 0, 0.5, 0.5
                 }
             loop
         loop
@@ -244,8 +244,8 @@ return
             stick key
 
             if(key == 256){
-                inx = mousex / 100
-                iny = mousey / 100
+                inx = mousex / 50
+                iny = mousey / 50
 
                 if(0 > inx or inx > 7 or 0 > iny or iny > 7):continue
                 if(grid(inx, iny) == 3){
@@ -317,7 +317,7 @@ return
 return
 
 #deffunc game
-    screen 0, 800, 800
+    width 400, 400
     init_riversi
     repeat
         check
