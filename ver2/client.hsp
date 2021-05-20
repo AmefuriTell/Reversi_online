@@ -317,7 +317,7 @@ return
 return
 
 #deffunc game
-    width 400, 400
+    //width 400, 400
     init_riversi
     repeat
         check
