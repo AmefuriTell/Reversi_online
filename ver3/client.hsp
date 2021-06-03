@@ -1,0 +1,396 @@
+#packopt name "オンラインオセロ"
+#epack "address"
+#epack "image.png"
+
+
+#include "user32.as"
+#include "pcbnet2.as"
+celload "image.png", 1 : celdiv 1, 100
+buffer 2, 800, 800
+
+//初期化
+init_client
+
+//名前を入力させる
+waiting_place
+//終了処理
+onexit *exit
+//画面サイズ変更があったら
+oncmd gosub *resize_screen, 0x5
+//ソケットの作成
+repeat
+    tcpopen sockID, address, port
+    if(stat != 0){
+        dialog "ソケット作成に失敗した。\nもう一度作成しますか？", 2
+        if(stat == 6) : continue
+        end
+    }
+    break
+loop
+
+//接続確認
+repeat
+    tcpiscon sockID
+    if(stat == 1){
+        //接続したら、名前を送る。
+        command = "SetName " + Name
+        send_command
+        break
+    }else:if(stat > 1){
+        dialog "接続に失敗しました", 1 : goto *exit
+    }
+    wait 1
+loop
+
+//メイン関数
+repeat
+    //接続し続けているかの確認
+    tcpfail sockID
+    if(stat != 0){
+        dialog "接続が切断されました", 1 : goto *exit
+    }
+
+    //サーバからのメッセージを確認
+    tcpget message, 1024, sockID
+    if(stat != 0){
+        read_message
+    }
+
+    if(now_stat == 0 && cnt \ 100 == 0){
+        command = "NowPlayer Get"
+        send_command
+    }
+    if(now_stat == 1) : title "" + opponent_name + "さんと対戦" : game : title "オンラインオセロ"
+    if(now_stat == 2) : waiting_place
+    draw_window
+    wait 1
+loop
+stop
+*resize_screen
+    print_field
+return
+
+*exit
+    tcpclose sockID
+end
+
+//初期化
+#deffunc init_client
+    //addressとポート番号を読み取り
+    address_txt = ""
+    notesel address_txt
+    noteload "address"
+    noteget address, 0
+    noteget port, 1
+    port = int(port)
+
+    name = "ゲスト"
+    opponent_name = ""
+    message = ""
+    now_stat = 0
+
+
+    //ウィンドウを用意
+    screen 0, ginfo_dispx, ginfo_dispy
+    width 800, 450
+    //ウィンドウの大きさを変更可能にする
+    GetWindowLong hwnd, -16
+    SetWindowLong hwnd, -16, stat | $10000 | $40000
+    //ウィンドウを最大化
+    //sendmsg hwnd, $112, $F030
+    //タイトル設定
+    title "オンラインオセロ"
+return
+
+#deffunc read_message
+    message_first = ""
+    message_second = ""
+    message_third = ""
+    size = 0
+    getstr message_first, message, 0, ' '
+    size += strsize
+    getstr message_second, message, size, ' '
+    size += strsize
+    getstr message_third, message, size, ' '
+    
+    switch message_first
+        case "NowPlayer"
+            Player_num = int(message_second)
+        swbreak
+        case "Matched"
+            now_stat = 1
+            opponent_name = message_second
+            myturn = int(message_third)
+        swbreak
+        case "OpponentDisconected"
+            dialog opponent_name + "さんが切断しました\nあなたの勝利です。"
+            now_stat = 2
+        swbreak
+        case "Move"
+            inx = int(message_second) \ 10
+            iny = int(message_second) / 10
+        swbreak
+    swend
+return
+
+#deffunc send_command
+    tcpput "" + command + " ", sockID
+return
+
+#deffunc draw_window
+    redraw 0
+    if(now_stat == 0){
+        color 255, 255, 255 : boxf
+        color 0, 0, 0
+        pos 0, 0
+        mes "現在の接続数は、" + Player_num + "です\nマッチを探しています。"
+    }else:if(now_stat == 1){
+        color 255, 255, 255 : boxf
+        color 0, 0, 0
+        pos 0, 0
+        mes "" + opponent_name + "さんとマッチしました"
+        if(myturn == 1){
+            mes "あなたは「黒」です"
+        }else{
+            mes "あなたは「白」です"
+        }
+        mes "ゲームを開始します"
+    }
+    redraw 1
+return
+
+#deffunc init_riversi
+    dim grid, 8, 8
+    grid(3, 3) = 2//白
+    grid(4, 4) = 2//白
+    grid(4, 3) = 1//黒
+    grid(3, 4) = 1//黒
+
+    dx = 1, 0, -1, 0, 1, 1, -1, -1
+    dy = 0, 1, 0, -1, -1, 1, -1, 1
+
+    turn = 1
+    black = 2
+    white = 2
+return
+#deffunc print_field
+    gsel 2
+        repeat 8
+            x = cnt
+            repeat 8
+                y = cnt
+                pos x * 100, y * 100
+                celput 1, grid(x, y), 1.0, 1.0
+                if(myturn != turn && grid(x, y) == 3){
+                    pos x * 100, y * 100
+                    celput 1, 0, 1.0, 1.0
+                }
+            loop
+        loop
+    gsel 0
+    redraw 0
+        color 255, 255, 255 : boxf
+        if(ginfo_winx >= ginfo_winy){
+            game_field_size = ginfo_winy
+            pos 0, 0
+            gzoom ginfo_winy, ginfo_winy, 2, 0, 0, 800, 800
+        }else{
+            game_field_size = ginfo_winx
+            pos 0, 0
+            gzoom ginfo_winx, ginfo_winx, 2, 0, 0, 800, 800
+        }
+    redraw 1
+return
+#deffunc check
+    dim can, 8, 8, 8
+    dim can_grid, 8, 8
+    can_num = 0
+
+    //候補の削除
+    repeat 8
+        i = cnt
+        repeat 8
+            j = cnt
+            if(grid(i, j) == 3):grid(i, j) = 0
+        loop
+    loop
+    repeat 8
+        x = cnt
+        repeat 8
+            y = cnt
+            if(grid(x, y) == 0){
+                repeat 8
+                    i = cnt
+                    nextx = x + dx(i)
+                    nexty = y + dy(i)
+                    if(0 > nextx or nextx > 7 or 0 > nexty or nexty > 7):continue
+                    if(grid(nextx, nexty) == turn \ 2 + 1){
+                        repeat 8
+                            j = cnt + 2
+                            nextx = x + dx(i) * j
+                            nexty = y + dy(i) * j
+                            if(0 > nextx or nextx > 7 or 0 > nexty or nexty > 7):break
+                            if(grid(nextx, nexty) == turn){
+                                grid(x, y) = 3
+                                can(x, y, i) += j - 1
+                                can_grid(x, y) += j - 1
+                                can_num++
+                                break
+                            }
+                            if(grid(nextx, nexty) == 0 or grid(nextx, nexty) == 3):break
+                        loop
+                    }
+                loop
+            }
+        loop
+    loop
+return
+
+#deffunc put//0=自分でどっちもおく。 //1=黒 //-1=白
+    if(myturn == turn){//自分のターンが回ってきたら
+        repeat
+            tcpget message, 1024, sockID
+            if(stat != 0){
+                read_message
+            }
+
+            if(now_stat == 2) : break
+            stick key
+
+            if(key == 256){
+                inx = mousex / (game_field_size / 8)
+                iny = mousey / (game_field_size / 8)
+
+                if(0 > inx or inx > 7 or 0 > iny or iny > 7):continue
+                if(grid(inx, iny) == 3){
+
+                    wait 1
+                    command = "Move " + (iny * 10 + inx)
+                    send_command
+                    repeat 8
+                        i = cnt
+                        repeat can(inx, iny, i)
+                            j = cnt + 1
+                            grid(inx + dx(i) * j, iny + dy(i) * j) = turn
+                        loop
+                        grid(inx, iny) = turn
+                    loop
+
+                    if(turn == 1){
+                        black += can_grid(inx, iny) + 1
+                        white -= can_grid(inx, iny) 
+                    }else:if(turn == 2){
+                        black -= can_grid(inx, iny)
+                        white += can_grid(inx, iny) + 1
+                    }
+                    break
+                }
+            }
+            await
+        loop
+    }else{//相手のターンだったら。
+        //ここで置く場所をサーバからもらう。
+        repeat
+            //接続し続けているかの確認
+            tcpfail sockID
+            if(stat != 0){
+                dialog "接続が切断されました", 1 : goto *exit
+            }
+
+            //サーバからのメッセージを確認
+            tcpget message, 1024, sockID
+            if(stat != 0){
+                read_message
+            }
+
+            if(now_stat == 2) : break
+
+            if(0 > inx or inx > 7 or 0 > iny or iny > 7):continue
+            if(grid(inx, iny) == 3){
+                repeat 8
+                    i = cnt
+                    repeat can(inx, iny, i)
+                        j = cnt + 1
+                        grid(inx + dx(i) * j, iny + dy(i) * j) = turn
+                    loop
+                    grid(inx, iny) = turn
+                loop
+
+                if(turn == 1){
+                    black += can_grid(inx, iny) + 1
+                    white -= can_grid(inx, iny) 
+                }else:if(turn == 2){
+                    black -= can_grid(inx, iny)
+                    white += can_grid(inx, iny) + 1
+                }
+                break
+            }
+            await
+        loop
+    }
+return
+
+#deffunc game
+    //width 400, 400
+    init_riversi
+    repeat
+        check
+        if(can_num == 0){
+            turn = turn \ 2 + 1
+            check
+            if(can_num == 0){
+                break
+            }else{
+                print_field
+                if(turn == myturn) : //dialog "あなたのターンです"
+                put
+                turn = turn \ 2 + 1
+            }
+        }else{
+            print_field
+            if(turn == myturn) : //dialog "あなたのターンです"
+            put
+            turn = turn \ 2 + 1
+        }
+        print_field
+        if(now_stat == 2) : break
+        await
+    loop
+    if(now_stat != 2){
+        print_field
+
+        if(black == white){
+            dialog "黒:" + black + " 白:" + white + "\n引き分けです。"
+        }else:if(black > white){
+            dialog "黒:" + black + " 白:" + white + "\n黒の勝ちです"
+        }else{
+            dialog "黒:" + black + " 白:" + white + "\n白の勝ちです"
+        }
+        
+        command = "EndGame"
+        send_command
+        now_stat = 2
+    }
+    myturn = 0
+return
+
+#deffunc waiting_place
+    cls
+    mes "対戦で使用する名前を入力してください。16文字までです。"
+    objmode 2
+    input name, 272, 30, 16
+    objsize 272, 30
+    button gosub "対戦!", *@forward
+    return_f = 0
+    repeat
+        if(return_f == 1) : break
+        await
+    loop
+return
+*@
+    return_f = 1
+    now_stat = 0
+    if(name == "") : name = "ゲスト"
+    now_stat = 0
+    cls
+return
