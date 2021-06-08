@@ -1,3 +1,5 @@
+#packopt name "reversi_server"
+
 #include "pcbnet2.as"
 randomize
 
